@@ -100,6 +100,12 @@ class AddPatientForm(ctk.CTkFrame):
                                       font=("Arial", 14, "bold"),
                                       command=self.save_patient)
         self.btn_save.grid(row=8, column=1, sticky="w", padx=20, pady=40)
+        
+        self.entry_name.insert(0, "John Doe")
+        self.entry_age.insert(0, "35")
+        self.entry_contact.insert(0, "9876543210")
+        self.txt_address.insert("1.0", "House 123, Test Colony, City")
+        self.combo_gender.set("Male")
 
     def create_label(self, row_idx, text):
         """Helper to create consistent labels with dark text"""

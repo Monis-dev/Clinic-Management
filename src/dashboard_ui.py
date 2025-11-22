@@ -57,6 +57,13 @@ class DashboardFrame(ctk.CTkFrame):
         
         lbl_list = ctk.CTkLabel(self.action_header, text="PATIENTS LIST", font=("Arial", 14, "bold"), text_color="#333")
         lbl_list.pack(side="left")
+
+        # Remove 
+        btn_remove_data = ctk.CTkButton(self.action_header, text="X Remove", width=80, height=30,
+                                        fg_color="#dc3545", 
+                                        hover_color="#c82333",
+                                        command=self.remove_patient_data)
+        btn_remove_data.pack(side="right", padx=5)
         
         # View All
         btn_view_all = ctk.CTkButton(self.action_header, text="☰ VIEW ALL PATIENTS", width=120, height=30,
@@ -81,7 +88,7 @@ class DashboardFrame(ctk.CTkFrame):
         
         ctk.CTkLabel(self.ctrl_frame, text="Show", text_color="#555").pack(side="left")
         self.combo_show = ctk.CTkComboBox(self.ctrl_frame, values=["10", "25", "50", "100", "All"], width=70, height=25, fg_color="white", text_color="black")
-        self.combo_show.set("100")
+        self.combo_show.set("10")
         self.combo_show.pack(side="left", padx=5)
         ctk.CTkLabel(self.ctrl_frame, text="records", text_color="#555").pack(side="left")
         
@@ -157,6 +164,28 @@ class DashboardFrame(ctk.CTkFrame):
         for item in self.tree.get_children():
             self.tree.delete(item)
 
+    def remove_patient_data(self):
+        selected_item = self.tree.selection()
+        
+        if not selected_item:
+            tk.messagebox.showwarning("Selection Error", "Please select a patient from the list to remove.")
+            return
+        item_values = self.tree.item(selected_item, 'values')
+        reg_num = item_values[2]
+        patient_name = item_values[1]
+        
+        confirm = tk.messagebox.askyesno(
+            "Confirm Delete",
+            f"Are you sure you want to permanently delete:\n\n{patient_name} ({reg_num})?\n\n his action cannot be undone"
+        )
+        if confirm:
+            success, msg = database.delete_patient(reg_num)
+            if success:
+                tk.messagebox.showinfo("Success", msg)
+                self.load_data()
+            else:
+                tk.messagebox.showerror("Error", f"Could not delete: {msg}")
+    
     def populate_table(self, data):
         limit = self.combo_show.get()
         count = 0

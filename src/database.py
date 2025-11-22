@@ -141,6 +141,23 @@ def fetch_all_patients():
             
     return decrypted_rows 
 
+def delete_patient(reg_num):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+                    DELETE FROM patients WHERE reg_number = ?
+                    ''', (reg_num,))
+        conn.commit()
+        return True, "Successfully remove the patient's data"
+    except sqlite3.IntegrityError:
+        return False, "Unable to find the patient registration number"
+    except Exception as e:
+        return False, f"Unable to delete patient data error:{e}"
+    finally:
+        conn.close()
+    
+        
 def get_next_patient_id():
     """Returns the count of patients + 1 for ID generation"""
     conn = sqlite3.connect(DB_NAME)
