@@ -4,6 +4,7 @@ import database
 from auth_ui import AuthApp
 from dashboard_ui import DashboardFrame
 from add_patient_ui import AddPatientForm
+from treatment_ui import TreatmentPage
 
 # Configuration
 ctk.set_appearance_mode("Light") # Force Light mode for the Web-style look
@@ -75,6 +76,10 @@ class MainApplication(ctk.CTkFrame):
         # Add Patient Button
         self.btn_add_pat = create_nav_btn("  ➕   Add Patient", self.show_add_patient)
         self.btn_add_pat.pack(fill="x", pady=2)
+        
+        # Add Treatment
+        self.btn_treat = create_nav_btn("  💊   Treatment", self.show_treatment_page)
+        self.btn_treat.pack(fill="x", pady=2)
 
         # Separator
         ctk.CTkFrame(self.sidebar, height=2, fg_color="#495057").pack(fill="x", pady=20, padx=15)
@@ -113,12 +118,15 @@ class MainApplication(ctk.CTkFrame):
 
         self.btn_dash.configure(fg_color=default_color, text_color=text_default)
         self.btn_add_pat.configure(fg_color=default_color, text_color=text_default)
+        self.btn_treat.configure(fg_color=default_color, text_color=text_default)
         
         # Set Active
         if btn_name == "dashboard":
             self.btn_dash.configure(fg_color=active_color, text_color=text_active)
         elif btn_name == "add_patient":
             self.btn_add_pat.configure(fg_color=active_color, text_color=text_active)
+        elif btn_name == "treatment":
+            self.btn_treat.configure(fg_color=active_color, text_color=text_active)
 
     def show_dashboard(self):
         self.clear_content()
@@ -131,9 +139,22 @@ class MainApplication(ctk.CTkFrame):
         self.set_active_button("add_patient")
         self.view_add_patient = AddPatientForm(self.content_area, self.doctor_name)
         self.view_add_patient.pack(fill="both", expand=True)
+        
+    def show_treatment_page(self, reg_number=None):
+        from treatment_ui import TreatmentPage # Lazy import
+        
+        self.clear_content()
+        self.set_active_button("treatment")
+        
+        self.view_treatment = TreatmentPage(self.content_area, reg_number)
+        self.view_treatment.pack(fill="both", expand=True)
 
     def open_patient_details(self, reg_number):
-        messagebox.showinfo("Action", f"Details for {reg_number} (Coming Soon)")
+        # Update the Dashboard callback to go to Treatment Page
+        self.show_treatment_page(reg_number)    
+
+    def open_patient_details(self, reg_number):
+        self.show_treatment_page(reg_number)
 
     def logout(self):
         self.parent.logout()
@@ -146,6 +167,7 @@ class App(ctk.CTk):
         
         database.init_db()
         database.create_patient_table()
+        database.create_treatment_tables()
         
         # self.show_login()
         self.login_success("Dr. Aftab Ahmed")

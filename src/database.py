@@ -171,3 +171,141 @@ def get_next_patient_id():
     finally:
         conn.close()    
                      
+                     
+
+def create_treatment_tables():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    # 1. Visits Table (Stores the main consultation info)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS visits (
+            visit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reg_number TEXT,
+            visit_date TEXT,
+            complaints TEXT,
+            diagnosis TEXT
+        )
+    ''')
+    
+    # 2. Prescriptions Table (Linked to Visit)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS prescriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            visit_id INTEGER,
+            medicine_name TEXT,
+            potency TEXT,
+            frequency TEXT,
+            duration TEXT,
+            FOREIGN KEY(visit_id) REFERENCES visits(visit_id)
+        )
+    ''')
+
+    # 3. Investigations Table (Linked to Visit)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS investigations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            visit_id INTEGER,
+            test_name TEXT,
+            notes TEXT,
+            FOREIGN KEY(visit_id) REFERENCES visits(visit_id)
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def get_patient_by_reg(reg_number):
+    """Fetches a single patient's details and decrypts them"""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM patients WHERE reg_number = ?", (reg_number,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        try:
+            # row structure based on creation:
+            # 0:id, 1:reg_num, 2:date, 3:enc_name, 4:gender, 5:age, 
+            # 6:enc_addr, 7:enc_contact, 8:type, 9:consultant
+            return {
+                "reg": row[1],
+                "name": decrypt_data(row[3]),
+                "age": row[5],
+                "gender": row[4],
+                "contact": decrypt_data(row[7]),
+                "address": decrypt_data(row[6]),
+                "consultant": row[9]
+            }
+        except:
+            return None
+    return None
+
+def save_treatment(reg_num, date, complaints, diagnosis, medicines, investigations):
+    """
+    Saves the entire visit: 
+    medicines is a list of dicts: [{'name': 'x', 'potency': 'y'...}]
+    investigations is a list of dicts: [{'test': 'x'}]
+    """
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    try:
+        # 1. Insert Visit
+        cursor.execute("INSERT INTO visits (reg_number, visit_date, complaints, diagnosis) VALUES (?, ?, ?, ?)",
+                       (reg_num, date, complaints, diagnosis))
+        visit_id = cursor.lastrowid
+        
+        # 2. Insert Medicines
+        for med in medicines:
+            cursor.execute("INSERT INTO prescriptions (visit_id, medicine_name, potency, frequency, duration) VALUES (?, ?, ?, ?, ?)",
+                           (visit_id, med['name'], med['potency'], med['freq'], med['duration']))
+            
+        # 3. Insert Investigations
+        for inv in investigations:
+            cursor.execute("INSERT INTO investigations (visit_id, test_name, notes) VALUES (?, ?, ?)",
+                           (visit_id, inv['test'], inv['notes']))
+                           
+        conn.commit()
+        return True, "Treatment Saved Successfully"
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+        
+def fetch_patient_history(reg_number):
+    """
+    Returns a list of past visits. 
+    Structure: [{'date': '...', 'diagnosis': '...', 'meds': [], 'tests': []}, ...]
+    """
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    # 1. Get all visits for this patient, ordered by latest first
+    cursor.execute("SELECT visit_id, visit_date, complaints, diagnosis FROM visits WHERE reg_number = ? ORDER BY visit_id DESC", (reg_number,))
+    visits_raw = cursor.fetchall()
+    
+    history = []
+    
+    for v in visits_raw:
+        v_id = v[0]
+        v_date = v[1]
+        v_comp = v[2]
+        v_diag = v[3]
+        
+        # 2. Get Medicines for this visit
+        cursor.execute("SELECT medicine_name, potency, frequency, duration FROM prescriptions WHERE visit_id = ?", (v_id,))
+        meds = cursor.fetchall() # List of tuples
+        
+        # 3. Get Investigations for this visit
+        cursor.execute("SELECT test_name, notes FROM investigations WHERE visit_id = ?", (v_id,))
+        tests = cursor.fetchall()
+        
+        history.append({
+            "date": v_date,
+            "complaints": v_comp,
+            "diagnosis": v_diag,
+            "meds": meds,
+            "tests": tests
+        })
+        
+    conn.close()
+    return history
