@@ -224,11 +224,9 @@ def get_patient_by_reg(reg_number):
     
     if row:
         try:
-            # row structure based on creation:
-            # 0:id, 1:reg_num, 2:date, 3:enc_name, 4:gender, 5:age, 
-            # 6:enc_addr, 7:enc_contact, 8:type, 9:consultant
             return {
                 "reg": row[1],
+                "reg_date": row[2],
                 "name": decrypt_data(row[3]),
                 "age": row[5],
                 "gender": row[4],

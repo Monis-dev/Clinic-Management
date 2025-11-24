@@ -1,5 +1,8 @@
 import customtkinter as ctk
 from tkinter import messagebox, ttk
+import webbrowser
+import os
+import tempfile
 import database
 from datetime import datetime
 from customtkinter.windows.widgets.ctk_scrollable_frame import CTkScrollableFrame
@@ -79,7 +82,6 @@ class TreatmentPage(ctk.CTkFrame):
         self.card.pack(fill="x", pady=(0, 20))
         
         self.history_frame = ctk.CTkFrame(self.scroll, fg_color="transparent")
-        self.history_frame.pack(fill="x", pady=(0, 20))
 
         self.form_frame = ctk.CTkFrame(self.scroll, fg_color="transparent")
         self.form_frame.pack(fill="x")
@@ -125,112 +127,92 @@ class TreatmentPage(ctk.CTkFrame):
         self.build_treatment_form()
 
     def load_history(self, reg_num):
-        # 1. Clear previous history
         for widget in self.history_frame.winfo_children():
             widget.destroy()
 
+        p_date = database.get_patient_by_reg(reg_num)
+        patient_reg_date = p_date['reg_date'] if p_date and 'reg_date' in p_date else "N/A"
+        
         history_data = database.fetch_patient_history(reg_num)
         
         if not history_data:
+            self.history_frame.pack_forget()
             return
+        
+        self.history_frame.pack(fill="x", pady=(0, 20), after=self.card)
 
-        # Title
         ctk.CTkLabel(self.history_frame, text="PREVIOUS TREATMENT HISTORY", 
                      font=("Arial", 14, "bold"), text_color="#555").pack(anchor="w", pady=(0, 10))
 
-        # 2. Loop through visits
         for visit in history_data:
-            # --- THE CARD CONTAINER ---
-            # We use a border color to act as the outside border
-            v_card = ctk.CTkFrame(self.history_frame, fg_color="white", 
-                                  corner_radius=0, border_color="#d6d6d6", border_width=1)
-            v_card.pack(fill="x", pady=10, padx=2)
             
-            # CONFIGURE GRID:
-            # Column 0: Labels (Fixed Width)
-            # Column 1: Values (Expands)
-            v_card.grid_columnconfigure(0, minsize=200, weight=0) 
-            v_card.grid_columnconfigure(1, weight=1)
+            v_card = ctk.CTkFrame(self.history_frame, fg_color="white", corner_radius=0)
+            v_card.pack(fill="x", pady=15, padx=2)
 
-            # Variables to track grid rows
-            current_row = 0
+            grid_box = ctk.CTkFrame(v_card, fg_color="#d6d6d6", corner_radius=0)
+            grid_box.pack(fill="x", expand=True)
 
-            # --- Helper Function for Grid Rows ---
-            def add_grid_row(label_text, value_widget_func, is_last=False):
-                nonlocal current_row
-                
-                # 1. LABEL (Column 0)
-                # A frame is used to provide the Grey Background color
-                lbl_frame = ctk.CTkFrame(v_card, fg_color="#2cc985", corner_radius=0)
-                lbl_frame.grid(row=current_row, column=0, sticky="nsew")
-                
-                ctk.CTkLabel(lbl_frame, text=label_text, font=("Arial", 12, "bold"), 
-                             text_color="#333").pack(anchor="w", padx=15, pady=12)
+            grid_box.grid_columnconfigure(0, weight=1, uniform="label") 
+            grid_box.grid_columnconfigure(1, weight=2, uniform="value") 
+            grid_box.grid_columnconfigure(2, weight=1, uniform="label") 
+            grid_box.grid_columnconfigure(3, weight=2, uniform="value") 
 
-                # 2. VALUE (Column 1)
-                # A frame for White Background
-                val_frame = ctk.CTkFrame(v_card, fg_color="white", corner_radius=0)
-                val_frame.grid(row=current_row, column=1, sticky="nsew")
-                
-                # Run the function passed to create the specific content (Text or Button)
-                value_widget_func(val_frame)
-
-                # 3. SEPARATOR LINE (Row + 1)
-                if not is_last:
-                    current_row += 1
-                    line = ctk.CTkFrame(v_card, height=1, fg_color="#e0e0e0", corner_radius=0)
-                    line.grid(row=current_row, column=0, columnspan=2, sticky="ew")
-                    current_row += 1
+            def create_cell(row, col, text, is_label=False, colspan=1, text_color="#333", bg_color=None):
+                if bg_color:
+                    cell_bg = bg_color
                 else:
-                    current_row += 1
-
-            # --- ROW 1: Treatment Date (Complex because of Delete Button) ---
-            def date_content(parent):
-                # Date Text
-                ctk.CTkLabel(parent, text=visit['date'], font=("Arial", 12), text_color="#e74c3c").pack(side="left", padx=15, pady=12)
-                # Delete Button
-                del_btn = ctk.CTkButton(parent, text="× Delete", width=60, height=22, 
-                                        fg_color="#f8d7da", text_color="#721c24", hover_color="#f1b0b7", 
-                                        font=("Arial", 11))
-                del_btn.pack(side="right", padx=15, pady=12)
-
-            add_grid_row("Treatment Date", date_content)
-
-            # --- ROW 2: Complaints ---
-            def comp_content(parent):
-                text = visit['complaints'] if visit['complaints'] else "-"
-                ctk.CTkLabel(parent, text=text, font=("Arial", 12), text_color="#333", justify="left", anchor="w").pack(fill="x", padx=15, pady=12)
+                    cell_bg = "#f9fafb" if is_label else "white"
+                    
+                font = ("Arial", 12, "bold") if is_label else ("Arial", 12)  
+                
+                cell = ctk.CTkFrame(grid_box, fg_color=cell_bg, corner_radius=0)
+                cell.grid(row=row, column=col, columnspan=colspan, sticky="nsew", padx=1, pady=1)
+                
+                lbl = ctk.CTkLabel(cell, text=text, font=font, text_color=text_color, anchor="w", justify="left")
+                lbl.pack(fill="both", expand=True, padx=10, pady=8)
+                return cell
             
-            add_grid_row("Complaints", comp_content)
+            
+            create_cell(0, 0, "Reg Number", is_label=True)
+            create_cell(0, 1, reg_num, text_color="#e74c3c")
+            create_cell(0, 2, "Reg Date", is_label=True)
+            create_cell(0, 3, patient_reg_date, text_color="#333")      
+            
+            create_cell(1, 0, "Treatment Date", is_label=True)
+            create_cell(1, 1, visit["date"], text_color="#e74c3c")
+            create_cell(1, 2, "Diagnosis", is_label=True)
+            create_cell(1, 3, visit["diagnosis"])                    
+            
+            create_cell(2, 0, "Complaints", is_label=True)
+            comp_text = visit['complaints'] if visit['complaints'] else "-"
+            create_cell(2, 1, comp_text, colspan=3)
 
-            # --- ROW 3: Disease ---
-            def dis_content(parent):
-                text = visit['diagnosis'] if visit['diagnosis'] else "-"
-                ctk.CTkLabel(parent, text=text, font=("Arial", 12), text_color="#333", anchor="w").pack(fill="x", padx=15, pady=12)
-
-            add_grid_row("Disease", dis_content)
-
-            # --- ROW 4: Medicines ---
-            def med_content(parent):
-                if visit['meds']:
-                    med_lines = []
-                    for m in visit['meds']:
-                        med_lines.append(f"• {m[0]} ({m[1]})  —  {m[2]} for {m[3]}")
-                    full_med_text = "\n".join(med_lines)
-                else:
-                    full_med_text = "No Medicines Prescribed"
+            create_cell(3, 0, "Medicines", is_label=True)
+            
+            if visit['meds']:
+                med_lines = []
+                for m in visit['meds']:
+                    med_lines.append(f"• {m[0]} ({m[1]})  —  {m[2]} for {m[3]}")
+                full_med_text = "\n".join(med_lines)
+            else:
+                full_med_text = "-"
                 
-                ctk.CTkLabel(parent, text=full_med_text, font=("Arial", 12), text_color="#333", 
-                             justify="left", anchor="w").pack(fill="x", padx=15, pady=12)
+            create_cell(3, 1, full_med_text, colspan=3)
 
-            add_grid_row("Medicines", med_content)
+            create_cell(4, 0, "Investigations", is_label=True)
+            test_text = ", ".join([t[0] for t in visit['tests']]) if visit['tests'] else "-"
+            create_cell(4, 1, test_text, colspan=3)
 
-            # --- ROW 5: Investigations ---
-            def inv_content(parent):
-                text = ", ".join([t[0] for t in visit['tests']]) if visit['tests'] else "-"
-                ctk.CTkLabel(parent, text=text, font=("Arial", 12), text_color="#333", anchor="w").pack(fill="x", padx=15, pady=12)
+            footer = ctk.CTkFrame(v_card, fg_color="transparent", height=40)
+            footer.pack(fill="x", pady=5)
+            
+            btn_print = ctk.CTkButton(footer, text="🖨 Print", width=80, height=28, 
+                                      fg_color="#17a2b8", hover_color="#138496", font=("Arial", 11, "bold"), command=lambda v=visit: self.print_visit_card(p_date, v))
+            btn_print.pack(side="right", padx=5)
 
-            add_grid_row("Investigations", inv_content, is_last=True)
+            btn_del = ctk.CTkButton(footer, text="× Delete", width=80, height=28, 
+                                    fg_color="#dc3545", hover_color="#c82333", font=("Arial", 11, "bold"))
+            btn_del.pack(side="right", padx=5)
 
     def build_treatment_form(self):
         # Clear existing form
@@ -307,8 +289,6 @@ class TreatmentPage(ctk.CTkFrame):
         row_frame = ctk.CTkFrame(self.med_rows_frame, fg_color="transparent")
         row_frame.pack(fill="x", pady=5) # Increased padding slightly
         
-        # --- MEDICINE DROPDOWN (Styled) ---
-        # style="Medical.TCombobox" applies the colors defined in __init__
         c_name = ttk.Combobox(row_frame, values=self.med_list, 
                               width=35, height=15, 
                               font=("Arial", 11),
@@ -317,7 +297,6 @@ class TreatmentPage(ctk.CTkFrame):
         c_name.set("-- Select Medicine --") # Set Placeholder
         c_name.pack(side="left", padx=5, ipady=3)
         
-        # Standard CTk ComboBoxes for the smaller fields (They look fine as is)
         c_pot = ctk.CTkComboBox(row_frame, values=["N/A", "250mg", "500mg", "650mg", "30CH", "200CH"], width=100)
         c_pot.pack(side="left", padx=5)
         
@@ -366,7 +345,244 @@ class TreatmentPage(ctk.CTkFrame):
         
         if success:
             messagebox.showinfo("Success", "Treatment Prescribed Successfully!")
-            # Reload the page to show the new history item immediately
             self.load_patient_card(self.reg_number)
         else:
             messagebox.showerror("Error", msg)
+            
+    def print_visit_card(self, p_data, visit):
+        """Generates an HTML file matching the Aarogyam Clinic reference"""
+        
+        # 1. Format Medicines
+        med_rows_html = ""
+        if visit['meds']:
+            for m in visit['meds']:
+                med_rows_html += f"""
+                <tr>
+                    <td class="label">Medicine</td>
+                    <td colspan="3" style="font-weight:bold;">{m[0]}</td>
+                </tr>
+                <tr>
+                    <td class="label">Potency</td>
+                    <td>{m[1]}</td>
+                    <td class="label">Frequency</td>
+                    <td>{m[2]}</td>
+                </tr>
+                 <tr>
+                    <td class="label">Duration</td>
+                    <td colspan="3">{m[3]}</td>
+                </tr>
+                <tr><td colspan="4" style="border:none; height:5px;"></td></tr>
+                """
+        else:
+            med_rows_html = '<tr><td class="label">Medicine</td><td colspan="3">-</td></tr>'
+
+        # 2. Format Investigations
+        test_text = ", ".join([t[0] for t in visit['tests']]) if visit['tests'] else "-"
+
+        # 3. Prepare Data for the Top Form
+        # We handle missing keys gracefully since we might not have Weight/Email in DB
+        name = p_data.get('name', '')
+        age = p_data.get('age', '')
+        gender = p_data.get('gender', '')
+        reg_no = p_data.get('reg', '')
+        contact = p_data.get('contact', '')
+        date = visit['date']
+        address = p_data.get('address', '')
+        
+        # HTML & CSS Construction
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Prescription</title>
+            <style>
+                body {{ 
+                    font-family: 'Times New Roman', serif; 
+                    padding: 40px; 
+                    max-width: 900px; 
+                    margin: auto; 
+                    color: #333;
+                }}
+                
+                /* --- HEADER STYLES --- */
+                .clinic-title {{
+                    text-align: center;
+                    font-size: 36px;
+                    font-weight: bold;
+                    color: #800000; /* Maroon Color */
+                    margin-bottom: 5px;
+                    text-shadow: 1px 1px 0px #ddd;
+                }}
+                
+                .clinic-addr {{
+                    text-align: center;
+                    font-size: 14px;
+                    color: #004d00; /* Dark Green */
+                    margin-bottom: 10px;
+                }}
+                
+                .divider-green {{
+                    border-top: 2px solid #006400; /* Green Line */
+                    margin: 10px 0;
+                }}
+                
+                /* Doctors Section */
+                .doctors-row {{
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 5px;
+                }}
+                
+                .doc-box {{ width: 48%; }}
+                .doc-right {{ text-align: right; }}
+                
+                .doc-name {{
+                    font-size: 20px;
+                    font-weight: bold;
+                    color: #800000; /* Maroon */
+                }}
+                
+                .doc-deg {{ font-size: 12px; font-weight: bold; }}
+                .doc-detail {{ font-size: 13px; color: #222; line-height: 1.4; }}
+                
+                /* Patient Form Section (The Input Lines) */
+                .patient-form {{
+                    margin-top: 15px;
+                    font-size: 15px;
+                    line-height: 1.8;
+                }}
+                
+                .form-row {{
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 8px;
+                }}
+                
+                /* Creates the "______" look with filled data */
+                .field {{
+                    border-bottom: 1px solid #800000; /* Maroon Underline */
+                    padding: 0 10px;
+                    color: #000;
+                    font-weight: bold;
+                    min-width: 50px;
+                    display: inline-block;
+                    text-align: center;
+                }}
+                
+                .label-text {{ color: #004d00; font-weight: bold; }} /* Green Labels */
+                
+                /* --- TREATMENT TABLE STYLES --- */
+                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }}
+                td {{ border: 1px solid #ccc; padding: 6px 8px; vertical-align: top; }}
+                .bg-label {{ background-color: #f9f9f9; width: 130px; font-weight: bold; color: #555; }}
+                
+            </style>
+        </head>
+        <body onload="window.print()">
+
+            <!-- 1. CLINIC HEADER -->
+            <div class="clinic-title">Aarogyam Homoeopathic Clinic</div>
+            <div class="clinic-addr">
+                UG-09, Royal View, FF-27-28, Sch. No. 54, Near South Indian Bank, Vijay Nagar, INDORE - 452010 (M.P.)
+            </div>
+            
+            <div class="divider-green"></div>
+            
+            <!-- 2. DOCTORS SECTION -->
+            <div class="doctors-row">
+                <!-- Left Doctor -->
+                <div class="doc-box">
+                    <div class="doc-name">Dr. Rajesh Bordia</div>
+                    <div class="doc-deg">M.D. (Hom.)</div>
+                    <div class="doc-detail">Professor - S.K.R.P. Gujrati Homoeopathic Medical College</div>
+                    <div class="doc-detail">Time : 6:30 - 9:00, Mob. : 98260-11330</div>
+                </div>
+                
+                <!-- Right Doctor -->
+                <div class="doc-box doc-right">
+                    <div class="doc-name">Dr. Tanuja Bordia</div>
+                    <div class="doc-deg">M.D. (Hom.)</div>
+                    <div class="doc-detail">Homoeopathic Physician</div>
+                    <div class="doc-detail">Time : 5:00 - 7:00, Mob. : 98260-11331</div>
+                </div>
+            </div>
+            
+            <div class="divider-green"></div>
+            
+            <!-- 3. PATIENT DETAILS FORM -->
+            <div class="patient-form">
+                <!-- Row 1 -->
+                <div class="form-row">
+                    <div>
+                        <span class="label-text">Name of Patient :</span> 
+                        <span class="field" style="width: 300px;">{name}</span>
+                    </div>
+                    <div>
+                        <span class="label-text">Age & Sex :</span> 
+                        <span class="field" style="width: 150px;">{age} / {gender}</span>
+                    </div>
+                    <div>
+                        <span class="label-text">Regd. No.</span> 
+                        <span class="field" style="width: 100px;">{reg_no}</span>
+                    </div>
+                </div>
+                
+                <!-- Row 2 -->
+                <div class="form-row">
+                    <div>
+                        <span class="label-text">Occupation :</span> 
+                        <span class="field" style="width: 180px;"></span> <!-- Empty for now -->
+                    </div>
+                    <div>
+                        <span class="label-text">Contact No.</span> 
+                        <span class="field" style="width: 150px;">{contact}</span>
+                    </div>
+                    <div>
+                        <span class="label-text">Date :</span> 
+                        <span class="field" style="width: 120px;">{date}</span>
+                    </div>
+                </div>
+                
+                <!-- Row 3 -->
+                <div class="form-row">
+                    <div style="width: 100%;">
+                        <span class="label-text">Address :</span> 
+                        <span class="field" style="width: 85%;">{address}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="divider-green" style="border-top: 1px solid #ccc; margin-top: 15px;"></div>
+
+            <!-- 4. TREATMENT DETAILS -->
+            <h3 style="text-decoration: underline; text-align: center; margin-top: 20px;">PRESCRIPTION</h3>
+            
+            <table>
+                <tr>
+                    <td class="bg-label">Diagnosis</td>
+                    <td colspan="3">{visit['diagnosis']}</td>
+                </tr>
+                <tr>
+                    <td class="bg-label">Complaints</td>
+                    <td colspan="3">{visit['complaints']}</td>
+                </tr>
+                
+                <!-- Medicines -->
+                {med_rows_html}
+
+                <tr>
+                    <td class="bg-label">Investigations</td>
+                    <td colspan="3">{test_text}</td>
+                </tr>
+            </table>
+
+        </body>
+        </html>
+        """
+        
+        # Save and Open
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as f:
+            f.write(html_content.encode('utf-8'))
+            temp_filename = f.name
+            
+        webbrowser.open(f"file://{os.path.realpath(temp_filename)}")
