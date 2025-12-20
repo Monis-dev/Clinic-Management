@@ -34,46 +34,42 @@ class TreatmentPage(ctk.CTkFrame):
         self.medicine_rows = [] 
         self.investigation_rows = []
         
-        # --- 1. CONFIGURE STYLE FOR DROPDOWN ---
-        # We use 'ttk' to get the scrollbar, but we style it to look modern
         style = ttk.Style()
         try:
-            style.theme_use("clam") # 'clam' theme allows changing border colors
+            style.theme_use("clam") 
         except:
-            pass # If system doesn't support clam, fallback to default
+            pass 
 
-        # Define "Medical.TCombobox" style
         style.configure("Medical.TCombobox",
-                        fieldbackground="white",       # Background inside the box
-                        background="#6c757d",            # Background of the arrow button
-                        foreground="#333",             # Text color
-                        arrowcolor="#2c2c2c",          # Arrow icon color (Cyan)
-                        bordercolor="#6c757d",         # Border color (Cyan)
-                        lightcolor="#6c757d",          # 3D effect highlight (Cyan)
-                        darkcolor="#6c757d")           # 3D effect shadow (Cyan)
+                        fieldbackground="white",      
+                        background="#6c757d",        
+                        foreground="#333",            
+                        arrowcolor="#2c2c2c",        
+                        bordercolor="#6c757d",       
+                        lightcolor="#6c757d",        
+                        darkcolor="#6c757d")         
         
         style.map("Medical.TCombobox",
                   fieldbackground=[("readonly", "white"), ("focus", "white")],
                   selectbackground=[("readonly", "white"), ("focus", "white")],
                   selectforeground=[("readonly", "#333"), ("focus", "#333")],
-                  bordercolor=[("focus", "#6c757d")], # Cyan border when clicked
+                  bordercolor=[("focus", "#6c757d")], 
                   lightcolor=[("focus", "#6c757d")],
                   darkcolor=[("focus", "#6c757d")])
         
-        # Fix for the popup listbox (The dropdown part)
         self.option_add('*TCombobox*Listbox.background', 'white')
         self.option_add('*TCombobox*Listbox.foreground', '#333')
-        self.option_add('*TCombobox*Listbox.selectBackground', "#6c757d") # Selection color
+        self.option_add('*TCombobox*Listbox.selectBackground', "#6c757d")
         self.option_add('*TCombobox*Listbox.selectForeground', 'white')
         # ----------------------------------------
-
-        # Potency, Duration, Frequrency and Lab test vairable
+        
+        # other list 
         self.potency_list = ["N/A", "6C", "30C", "200C", "1M", "10M", "50M", "CM", "3X", "6X", "12X", "30X"]
         self.dur_list = ["3 Days", "5 Days", "7 Days", "15 Days", "1 Month"]
         self.freq_list = ["24 Hrly", "12 Hrly", "8 Hrly", "6 Hrly", "4 Hrly", "3 Hrly", "SOS", "Stat"]
         self.test_list = ["Blood Test (CBC)", "X-Ray", "Sugar Test", "Typhoid", "Lipid Profile"]
         
-        # Load Medicines
+        # Medicine list
         self.med_list = []
         try:
             with open("medicines.txt", "r") as f:
@@ -82,13 +78,10 @@ class TreatmentPage(ctk.CTkFrame):
         except FileNotFoundError:
             self.med_list = ["Error: medicines.txt not found"]
             
-        # Add the Placeholder to the top of the list
         self.med_list.insert(0, "-- Select Medicine --")
 
-        # ... (Rest of your __init__ code remains the same: SCROLLABLE CONTAINER etc.) ...
         self.scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
         self.scroll.pack(fill="both", expand=True, padx=10, pady=10)
-        # ...
         self.card = ctk.CTkFrame(self.scroll, fg_color="white", corner_radius=10, border_color="#d6d6d6", border_width=1)
         self.card.pack(fill="x", pady=(0, 20))
         
@@ -114,29 +107,76 @@ class TreatmentPage(ctk.CTkFrame):
             messagebox.showerror("Error", "Patient not found")
             return
 
-        # Clear previous widgets in card if any
+        # Clear previous widgets
         for widget in self.card.winfo_children():
             widget.destroy()
 
-        # Row 1: Name & Reg
+        # --- SECTION 1: BASIC DETAILS ---
         r1 = ctk.CTkFrame(self.card, fg_color="transparent")
         r1.pack(fill="x", padx=20, pady=(15, 5))
         ctk.CTkLabel(r1, text=p_data['name'], font=("Arial", 22, "bold"), text_color="#2cc985").pack(side="left")
         ctk.CTkLabel(r1, text=f"({p_data['reg']})", font=("Arial", 16, "bold"), text_color="#555").pack(side="left", padx=10)
         
-        # Row 2: Details
         r2 = ctk.CTkFrame(self.card, fg_color="transparent")
         r2.pack(fill="x", padx=20, pady=(0, 15))
         details = f"Age: {p_data['age']}  |  Gender: {p_data['gender']}  |  Contact: {p_data['contact']}"
         ctk.CTkLabel(r2, text=details, font=("Arial", 12), text_color="#333").pack(side="left")
         ctk.CTkLabel(self.card, text=f"Address: {p_data['address']}", font=("Arial", 12), text_color="#555").pack(anchor="w", padx=20, pady=(0, 15))
 
+        # --- SECTION 2: PERSONAL HISTORY (Display Only if Exists) ---
+        ph_data = database.get_personal_history(reg_num)
+        has_real_data = ph_data and any(str(x).strip() for x in ph_data)
+        
+        if has_real_data:
+            # Create a separator and container
+            ctk.CTkFrame(self.card, height=1, fg_color="#e0e0e0").pack(fill="x", padx=10, pady=5)
+            
+            ph_frame = ctk.CTkFrame(self.card, fg_color="#f8f9fa", corner_radius=6)
+            ph_frame.pack(fill="x", padx=15, pady=10)
+            
+            ctk.CTkLabel(ph_frame, text="PERSONAL HISTORY RECORD", font=("Arial", 11, "bold"), text_color="#555").pack(anchor="w", padx=10, pady=(10, 5))
+            
+            # Labels list MUST match the order in the database SELECT query
+            labels = [
+                "Thermal", "Appetite", "Thirst", "Desire", "Aversion", 
+                "Aggravation", "Amelioration", "Perspiration", "Sleep", "Stool", 
+                "Urine", "Addiction", "Allergies", "Appearance", "Build", 
+                "Height", "Weight", "Skin", "Hair Type", "Tongue", "Mental General"
+            ]
+            
+            # Grid Container
+            grid_box = ctk.CTkFrame(ph_frame, fg_color="transparent")
+            grid_box.pack(fill="x", padx=10, pady=(0, 10))
+            
+            # Loop through data and display non-empty fields
+            # We use a counter 'display_idx' to pack them neatly even if some are skipped
+            display_idx = 0
+            
+            for i, value in enumerate(ph_data):
+                if value and str(value).strip(): # Only show if value exists
+                    
+                    row = display_idx // 3 # 3 items per row
+                    col = display_idx % 3
+                    
+                    # Cell Frame
+                    cell = ctk.CTkFrame(grid_box, fg_color="white", corner_radius=4, border_width=1, border_color="#e0e0e0")
+                    cell.grid(row=row, column=col, padx=4, pady=4, sticky="ew")
+                    grid_box.grid_columnconfigure(col, weight=1)
+                    
+                    # Label (Small Grey)
+                    ctk.CTkLabel(cell, text=labels[i], font=("Arial", 9, "bold"), text_color="#888").pack(anchor="w", padx=8, pady=(4, 0))
+                    # Value (Normal Black)
+                    ctk.CTkLabel(cell, text=str(value), font=("Arial", 11), text_color="#333", wraplength=200).pack(anchor="w", padx=8, pady=(0, 4))
+                    
+                    display_idx += 1
+
         # B. Load History (Previous Treatments)
         self.load_history(reg_num)
 
         # C. Build Empty Form for New Treatment
         self.build_treatment_form()
-
+        
+        
     def load_history(self, reg_num):
         # 1. Clear previous history
         for widget in self.history_frame.winfo_children():
@@ -260,25 +300,29 @@ class TreatmentPage(ctk.CTkFrame):
             btn_print.pack(side="right", padx=5)
 
             btn_del = ctk.CTkButton(footer, text="× Delete", width=80, height=28, 
-                                    fg_color="#dc3545", hover_color="#c82333", font=("Arial", 11, "bold"))
+                                    fg_color="#dc3545", hover_color="#c82333", font=("Arial", 11, "bold"), command=lambda v_id=visit["id"]: self.delete_treatment_plan(v_id))
             btn_del.pack(side="right", padx=5)
     
     def build_treatment_form(self):
-        # Clear existing form
+        # ... (Clear widgets code) ...
         for widget in self.form_frame.winfo_children():
             widget.destroy()
-        
-        # Reset lists
+
         self.medicine_rows = []
         self.investigation_rows = []
+        
+        history_exists = database.check_personal_history_exists(self.reg_number)
+        
+        # 1. INITIALIZE THE DICTIONARY
+        self.ph_entries = {} 
 
-        # Title
+        # ... (Header and Diagnosis Code stays the same) ...
+        # (Copy your Diagnosis Date/Disease/Complaints part here)
         ctk.CTkLabel(self.form_frame, text="ADD NEW TREATMENT PLAN", font=("Arial", 14, "bold"), text_color="#333").pack(anchor="w", pady=(10, 10))
-
         container = ctk.CTkFrame(self.form_frame, fg_color="white", corner_radius=10)
         container.pack(fill="x")
-
-        # --- Diagnosis Section ---
+        
+        # Diagnosis Section
         diag_frame = ctk.CTkFrame(container, fg_color="transparent")
         diag_frame.pack(fill="x", pady=10)
         
@@ -301,56 +345,85 @@ class TreatmentPage(ctk.CTkFrame):
         self.entry_complaints = ctk.CTkEntry(f_comp, width=400)
         self.entry_complaints.pack(side="left")
 
-        # --- Medicine Section ---
+        # ==================================================
+        # 2. PERSONAL HISTORY (The Fix)
+        # ==================================================
+        
+        # Check if history exists (Optional, if you implemented that check)
+        # history_exists = database.check_personal_history_exists(self.reg_number)
+        if not history_exists:
+            ph_wrapper = ctk.CTkFrame(container, fg_color="transparent")
+            ph_wrapper.pack(fill="x", padx=15, pady=10)
+
+            ctk.CTkLabel(ph_wrapper, text="Personal History", font=("Arial", 12, "bold")).pack(anchor="w", pady=(0,5))
+
+            # Define Labels
+            field_labels = [
+                "Thermal", "Appetite", "Thirst", 
+                "Desire", "Aversion", "Aggravation", 
+                "Amelioration", "Perspiration", "Sleep", 
+                "Stool", "Urine", "Addiction", 
+                "Allergies", "Appearance", "Build", 
+                "Height", "Weight", "Skin", 
+                "Hair Type", "Tongue", "Mental General"
+            ]
+
+            grid_frame = ctk.CTkFrame(ph_wrapper, fg_color="transparent")
+            grid_frame.pack(fill="x")
+
+            # Create fields in a loop
+            for i, label_text in enumerate(field_labels):
+                row = i // 3
+                col = i % 3
+
+                cell = ctk.CTkFrame(grid_frame, fg_color="transparent")
+                cell.grid(row=row, column=col, padx=5, pady=5, sticky="ew")
+                grid_frame.grid_columnconfigure(col, weight=1)
+
+                ctk.CTkLabel(cell, text=label_text, font=("Arial", 11), anchor="w").pack(fill="x")
+
+                entry = ctk.CTkEntry(cell, height=28)
+                entry.pack(fill="x")
+
+                # CRITICAL: Create the key and store the widget
+                db_key = label_text.lower().replace(" ", "_")
+                self.ph_entries[db_key] = entry  # <--- THIS IS WHAT WAS MISSING
+
+        # ... (Rest of Medicine Section, unchanged) ...
         self.med_wrapper = ctk.CTkFrame(container, fg_color="#F9F9F9", corner_radius=5)
         self.med_wrapper.pack(fill="x", padx=15, pady=10)
-        
-        # Header
-        head = ctk.CTkFrame(self.med_wrapper, fg_color="transparent", height=30)
-        head.pack(fill="x", padx=5, pady=5)
-        labels = ["Medicine Name", "Potency", "Frequency", "Duration"]
-        widths = [250, 100, 150, 100]
-        for txt, w in zip(labels, widths):
-            ctk.CTkLabel(head, text=txt, font=("Arial", 11, "bold"), width=w, text_color="#555").pack(side="left", padx=5)
-
+        # (Add your Medicine UI code here: Headers, Add Button, etc)
+        # ...
         self.med_rows_frame = ctk.CTkFrame(self.med_wrapper, fg_color="transparent")
         self.med_rows_frame.pack(fill="x", padx=5)
-        
         self.add_medicine_row()
         ctk.CTkButton(self.med_wrapper, text="+ Add Medicine", width=120, fg_color="#6c757d", height=25, command=self.add_medicine_row).pack(anchor="w", padx=10, pady=10)
 
-        # --- Investigation Section ---
+        # Investigation Section
         self.inv_wrapper = ctk.CTkFrame(container, fg_color="transparent")
         self.inv_wrapper.pack(fill="x", padx=15, pady=10)
         ctk.CTkLabel(self.inv_wrapper, text="Lab Tests:", font=("Arial", 12, "bold")).pack(anchor="w")
-        
         self.inv_rows_frame = ctk.CTkFrame(self.inv_wrapper, fg_color="transparent")
         self.inv_rows_frame.pack(fill="x")
-        
         self.add_investigation_row()
         ctk.CTkButton(self.inv_wrapper, text="+ Add Test", width=100, fg_color="#6c757d", height=25, command=self.add_investigation_row).pack(anchor="w", pady=5)
 
-        # --- Save Button ---
+        # Save Button
         btn_save = ctk.CTkButton(self.form_frame, text="SAVE & ADD", fg_color="#28a745", height=40, font=("Arial", 14, "bold"), command=self.save_data)
-        btn_save.pack(fill="x", pady=20)
-
+        btn_save.pack(fill="x", pady=20)    
+        
     def add_medicine_row(self):
         row_frame = ctk.CTkFrame(self.med_rows_frame, fg_color="transparent")
         row_frame.pack(fill="x", pady=5) 
         
-        # 1. Medicine Name
         c_name = self.create_searchable_entry(row_frame, self.med_list, width=220, placeholder="Medicine Name")
         
-        # 2. Potency
         c_pot = self.create_searchable_entry(row_frame, self.potency_list, width=80, placeholder="Potency")
         
-        # 3. Frequency
         c_freq = self.create_searchable_entry(row_frame, self.freq_list, width=120, placeholder="Frequency")
         
-        # 4. Duration
         c_dur = self.create_searchable_entry(row_frame, self.dur_list, width=100, placeholder="Duration")
         
-        # Add to list for saving
         self.medicine_rows.append({
             "name": c_name, 
             "potency": c_pot, 
@@ -397,34 +470,61 @@ class TreatmentPage(ctk.CTkFrame):
 
     def save_data(self):
         if not self.reg_number:
+            messagebox.showwarning("Error", "No patient selected.")
             return
-            
+
         date = self.entry_date.get()
         disease = self.entry_disease.get()
         complaints = self.entry_complaints.get()
         
+        ph_data = {}
+        for db_key, entry_widget in self.ph_entries.items():
+            value = entry_widget.get()
+            ph_data[db_key] = value
+            
+        # ... (Gather Medicines logic) ...
         med_data = []
         for row in self.medicine_rows:
             name = row['name'].get()
-            if name.strip():
-                med_data.append({'name': name, 'potency': row['potency'].get(), 'freq': row['freq'].get(), 'duration': row['duration'].get()})
-                
+            if name and name != "-- Select Medicine --" and name.strip():
+                med_data.append({
+                    'name': name,
+                    'potency': row['potency'].get(),
+                    'freq': row['freq'].get(),
+                    'duration': row['duration'].get()
+                })
+
         inv_data = []
         for row in self.investigation_rows:
             test = row['test'].get()
-            path = row.get("file_path")
+            path = row.get('file_path') 
             if test.strip():
                 note_to_save = path if path else ""
                 inv_data.append({'test': test, 'notes': note_to_save})
-                
-        success, msg = database.save_treatment(self.reg_number, date, complaints, disease, med_data, inv_data)
+
+        success, msg = database.save_treatment(
+            self.reg_number, date, complaints, disease, med_data, inv_data, ph_data
+        )
         
         if success:
-            messagebox.showinfo("Success", "Treatment Prescribed Successfully!")
+            messagebox.showinfo("Success", "Saved!")
             self.load_patient_card(self.reg_number)
         else:
             messagebox.showerror("Error", msg)
+       
+    def delete_treatment_plan(self, visit_id):
+        confirm = messagebox.askyesno("Confirm Delete", "Are you sure you want to delete this treatment plan?\nThis cannot be undone.")
         
+        if confirm:
+            success, msg = database.delete_visit(visit_id)
+            
+            if success:
+                messagebox.showinfo("Success", msg)
+                self.load_patient_card(self.reg_number)
+            else:
+                messagebox.showerror("Error", msg)   
+                
+                      
     def setup_autocomplete(self, entry_widget, data_list, arrow_button=None):
         # 1. Get the Main Window (Root)
         # We attach the listbox to the main window so it floats ABOVE everything else

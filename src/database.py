@@ -184,7 +184,8 @@ def create_treatment_tables():
             reg_number TEXT,
             visit_date TEXT,
             complaints TEXT,
-            diagnosis TEXT
+            diagnosis TEXT,
+            thermal TEXT
         )
     ''')
     
@@ -201,7 +202,37 @@ def create_treatment_tables():
         )
     ''')
 
-    # 3. Investigations Table (Linked to Visit)
+    # 3. Patient history
+    cursor.execute(''' 
+        CREATE TABLE IF NOT EXISTS patient_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            visit_id INTEGER,
+            thermal TEXT,
+            appetite TEXT,
+            thirst TEXT,
+            desire TEXT,
+            aversion TEXT,
+            aggravation TEXT,
+            amelioration TEXT,
+            perspiration TEXT,
+            sleep TEXT,
+            stool TEXT,
+            urine TEXT,
+            addiction TEXT,
+            allergies TEXT,
+            appearance TEXT,
+            build TEXT,
+            height TEXT,
+            weight TEXT,
+            skin TEXT,
+            hair_type TEXT,
+            tongue TEXT,
+            mental_general TEXT,
+            FOREIGN KEY(visit_id) REFERENCES visits(visit_id)
+        )       
+    ''')
+    
+    # 4. Investigations Table (Linked to Visit)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS investigations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -238,7 +269,7 @@ def get_patient_by_reg(reg_number):
             return None
     return None
 
-def save_treatment(reg_num, date, complaints, diagnosis, medicines, investigations):
+def save_treatment(reg_num, date, complaints, diagnosis, medicines, investigations, ph_data):
     """
     Saves the entire visit: 
     medicines is a list of dicts: [{'name': 'x', 'potency': 'y'...}]
@@ -256,8 +287,28 @@ def save_treatment(reg_num, date, complaints, diagnosis, medicines, investigatio
         for med in medicines:
             cursor.execute("INSERT INTO prescriptions (visit_id, medicine_name, potency, frequency, duration) VALUES (?, ?, ?, ?, ?)",
                            (visit_id, med['name'], med['potency'], med['freq'], med['duration']))
-            
-        # 3. Insert Investigations
+        
+        # 3. Insert patient history
+        if ph_data:
+            cursor.execute('''
+                INSERT INTO patient_history (
+                    visit_id, thermal, appetite, thirst, desire, aversion, 
+                    aggravation, amelioration, perspiration, sleep, stool, 
+                    urine, addiction, allergies, appearance, build, 
+                    height, weight, skin, hair_type, tongue, mental_general
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)  
+            ''', (
+                visit_id, 
+                ph_data.get('thermal', ''), ph_data.get('appetite', ''), ph_data.get('thirst', ''),
+                ph_data.get('desire', ''), ph_data.get('aversion', ''), ph_data.get('aggravation', ''),
+                ph_data.get('amelioration', ''), ph_data.get('perspiration', ''), ph_data.get('sleep', ''),
+                ph_data.get('stool', ''), ph_data.get('urine', ''), ph_data.get('addiction', ''),
+                ph_data.get('allergies', ''), ph_data.get('appearance', ''), ph_data.get('build', ''),
+                ph_data.get('height', ''), ph_data.get('weight', ''), ph_data.get('skin', ''),
+                ph_data.get('hair_type', ''), ph_data.get('tongue', ''), ph_data.get('mental_general', '')
+            ))
+        
+        # 4. Insert Investigations
         for inv in investigations:
             cursor.execute("INSERT INTO investigations (visit_id, test_name, notes) VALUES (?, ?, ?)",
                            (visit_id, inv['test'], inv['notes']))
@@ -268,7 +319,48 @@ def save_treatment(reg_num, date, complaints, diagnosis, medicines, investigatio
         return False, str(e)
     finally:
         conn.close()
-        
+
+def check_personal_history_exists(reg_number):
+    """Returns True if this patient already has personal history saved."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    # We join visits and patient_history to find if this Reg Number has any history data
+    query = """
+        SELECT count(*) 
+        FROM patient_history 
+        JOIN visits ON patient_history.visit_id = visits.visit_id 
+        WHERE visits.reg_number = ?
+    """
+    cursor.execute(query, (reg_number,))
+    count = cursor.fetchone()[0]
+    conn.close()
+    
+    return count > 0
+
+def get_personal_history(reg_number):
+    """Fetches the latest personal history record for a patient."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    # We select columns explicitly to ensure the order matches our UI labels
+    query = """
+        SELECT thermal, appetite, thirst, desire, aversion, 
+               aggravation, amelioration, perspiration, sleep, stool, 
+               urine, addiction, allergies, appearance, build, 
+               height, weight, skin, hair_type, tongue, mental_general
+        FROM patient_history 
+        JOIN visits ON patient_history.visit_id = visits.visit_id 
+        WHERE visits.reg_number = ?
+        ORDER BY patient_history.id DESC 
+        LIMIT 1
+    """
+    cursor.execute(query, (reg_number,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    return row
+  
 def fetch_patient_history(reg_number):
     """
     Returns a list of past visits. 
@@ -298,6 +390,7 @@ def fetch_patient_history(reg_number):
         tests = cursor.fetchall()
         
         history.append({
+            "id": v_id,
             "date": v_date,
             "complaints": v_comp,
             "diagnosis": v_diag,
@@ -307,3 +400,24 @@ def fetch_patient_history(reg_number):
         
     conn.close()
     return history
+
+def delete_visit(visit_id):
+    """Deletes a specific visit and all its related data (meds, tests, history)."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    try:
+        # 1. Delete Child Records first
+        cursor.execute("DELETE FROM prescriptions WHERE visit_id = ?", (visit_id,))
+        cursor.execute("DELETE FROM investigations WHERE visit_id = ?", (visit_id,))
+        cursor.execute("DELETE FROM patient_history WHERE visit_id = ?", (visit_id,))
+        
+        # 2. Delete the Main Visit Record
+        cursor.execute("DELETE FROM visits WHERE visit_id = ?", (visit_id,))
+        
+        conn.commit()
+        return True, "Treatment plan deleted successfully."
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+        
