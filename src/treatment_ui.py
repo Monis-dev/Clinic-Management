@@ -1,11 +1,16 @@
 import customtkinter as ctk
-from tkinter import messagebox, ttk
 import webbrowser
 import os
 import tempfile
 import database
+import platform
+import subprocess
+import tkinter as tk
+
+from tkinter import messagebox, ttk, filedialog
 from datetime import datetime
 from customtkinter.windows.widgets.ctk_scrollable_frame import CTkScrollableFrame
+
 
 def fixed_check_if_master_is_canvas(self, widget):
     if widget is None:
@@ -62,6 +67,12 @@ class TreatmentPage(ctk.CTkFrame):
         self.option_add('*TCombobox*Listbox.selectForeground', 'white')
         # ----------------------------------------
 
+        # Potency, Duration, Frequrency and Lab test vairable
+        self.potency_list = ["N/A", "6C", "30C", "200C", "1M", "10M", "50M", "CM", "3X", "6X", "12X", "30X"]
+        self.dur_list = ["3 Days", "5 Days", "7 Days", "15 Days", "1 Month"]
+        self.freq_list = ["24 Hrly", "12 Hrly", "8 Hrly", "6 Hrly", "4 Hrly", "3 Hrly", "SOS", "Stat"]
+        self.test_list = ["Blood Test (CBC)", "X-Ray", "Sugar Test", "Typhoid", "Lipid Profile"]
+        
         # Load Medicines
         self.med_list = []
         try:
@@ -127,12 +138,13 @@ class TreatmentPage(ctk.CTkFrame):
         self.build_treatment_form()
 
     def load_history(self, reg_num):
+        # 1. Clear previous history
         for widget in self.history_frame.winfo_children():
             widget.destroy()
 
-        p_date = database.get_patient_by_reg(reg_num)
-        patient_reg_date = p_date['reg_date'] if p_date and 'reg_date' in p_date else "N/A"
-        
+        p_data = database.get_patient_by_reg(reg_num)
+        patient_reg_date = p_data['reg_date'] if p_data and 'reg_date' in p_data else "N/A"
+
         history_data = database.fetch_patient_history(reg_num)
         
         if not history_data:
@@ -144,8 +156,15 @@ class TreatmentPage(ctk.CTkFrame):
         ctk.CTkLabel(self.history_frame, text="PREVIOUS TREATMENT HISTORY", 
                      font=("Arial", 14, "bold"), text_color="#555").pack(anchor="w", pady=(0, 10))
 
-        for visit in history_data:
+        # Calculate Total Visits to display "Visit #X" (assuming history_data is latest first)
+        total_visits = len(history_data)
+
+        for idx, visit in enumerate(history_data):
             
+            # --- CALCULATE VISIT NUMBER ---
+            # If list is [Latest, ..., Oldest], then Latest is visit #Total
+            visit_num = total_visits - idx
+
             v_card = ctk.CTkFrame(self.history_frame, fg_color="white", corner_radius=0)
             v_card.pack(fill="x", pady=15, padx=2)
 
@@ -172,23 +191,27 @@ class TreatmentPage(ctk.CTkFrame):
                 lbl.pack(fill="both", expand=True, padx=10, pady=8)
                 return cell
             
-            
+            # --- ROW 0 ---
             create_cell(0, 0, "Reg Number", is_label=True)
-            create_cell(0, 1, reg_num, text_color="#e74c3c")
-            create_cell(0, 2, "Reg Date", is_label=True)
-            create_cell(0, 3, patient_reg_date, text_color="#333")      
+            create_cell(0, 1, reg_num, text_color="#333") 
             
-            create_cell(1, 0, "Treatment Date", is_label=True)
-            create_cell(1, 1, visit["date"], text_color="#e74c3c")
+            create_cell(0, 2, "Reg Date", is_label=True)
+            create_cell(0, 3, patient_reg_date, text_color="#333") 
+            
+            # --- ROW 1: Visit Number & Date ---
+            create_cell(1, 0, f"Visit #{visit_num}", is_label=True, bg_color="#e3f2fd") # Light Blue
+            create_cell(1, 1, visit["date"], text_color="#e74c3c") 
+            
             create_cell(1, 2, "Diagnosis", is_label=True)
             create_cell(1, 3, visit["diagnosis"])                    
             
+            # --- ROW 2: Complaints ---
             create_cell(2, 0, "Complaints", is_label=True)
             comp_text = visit['complaints'] if visit['complaints'] else "-"
             create_cell(2, 1, comp_text, colspan=3)
 
+            # --- ROW 3: Medicines ---
             create_cell(3, 0, "Medicines", is_label=True)
-            
             if visit['meds']:
                 med_lines = []
                 for m in visit['meds']:
@@ -196,24 +219,50 @@ class TreatmentPage(ctk.CTkFrame):
                 full_med_text = "\n".join(med_lines)
             else:
                 full_med_text = "-"
-                
             create_cell(3, 1, full_med_text, colspan=3)
 
+            # --- ROW 4: Investigations (CUSTOM CELL FOR FILE BUTTON) ---
             create_cell(4, 0, "Investigations", is_label=True)
-            test_text = ", ".join([t[0] for t in visit['tests']]) if visit['tests'] else "-"
-            create_cell(4, 1, test_text, colspan=3)
+            
+            # Custom Cell logic for Value column
+            inv_cell = ctk.CTkFrame(grid_box, fg_color="white", corner_radius=0)
+            inv_cell.grid(row=4, column=1, columnspan=3, sticky="nsew", padx=1, pady=1)
+            
+            if visit['tests']:
+                # Create a mini list inside this cell
+                for t in visit['tests']:
+                    # t[0] is Name, t[1] is Notes/FilePath
+                    test_name = t[0]
+                    file_path = t[1]
+                    
+                    row_f = ctk.CTkFrame(inv_cell, fg_color="transparent")
+                    row_f.pack(fill="x", padx=10, pady=2)
+                    
+                    ctk.CTkLabel(row_f, text=f"• {test_name}", font=("Arial", 12)).pack(side="left")
+                    
+                    # Check if file_path exists and is not empty
+                    if file_path and os.path.exists(file_path):
+                        # Add View Button
+                        btn_v = ctk.CTkButton(row_f, text="👁 View File", width=70, height=22, 
+                                              fg_color="#17a2b8", font=("Arial", 10),
+                                              command=lambda p=file_path: self.open_file(p))
+                        btn_v.pack(side="left", padx=10)
+            else:
+                 ctk.CTkLabel(inv_cell, text="-", font=("Arial", 12), anchor="w").pack(fill="x", padx=10, pady=8)
 
+            # --- FOOTER ---
             footer = ctk.CTkFrame(v_card, fg_color="transparent", height=40)
             footer.pack(fill="x", pady=5)
             
             btn_print = ctk.CTkButton(footer, text="🖨 Print", width=80, height=28, 
-                                      fg_color="#17a2b8", hover_color="#138496", font=("Arial", 11, "bold"), command=lambda v=visit: self.print_visit_card(p_date, v))
+                                      fg_color="#17a2b8", hover_color="#138496", font=("Arial", 11, "bold"),
+                                      command=lambda p=p_data, v=visit: self.print_visit_card(p, v))
             btn_print.pack(side="right", padx=5)
 
             btn_del = ctk.CTkButton(footer, text="× Delete", width=80, height=28, 
                                     fg_color="#dc3545", hover_color="#c82333", font=("Arial", 11, "bold"))
             btn_del.pack(side="right", padx=5)
-
+    
     def build_treatment_form(self):
         # Clear existing form
         for widget in self.form_frame.winfo_children():
@@ -287,39 +336,64 @@ class TreatmentPage(ctk.CTkFrame):
 
     def add_medicine_row(self):
         row_frame = ctk.CTkFrame(self.med_rows_frame, fg_color="transparent")
-        row_frame.pack(fill="x", pady=5) # Increased padding slightly
+        row_frame.pack(fill="x", pady=5) 
         
-        c_name = ttk.Combobox(row_frame, values=self.med_list, 
-                              width=35, height=15, 
-                              font=("Arial", 11),
-                              style="Medical.TCombobox")
+        # 1. Medicine Name
+        c_name = self.create_searchable_entry(row_frame, self.med_list, width=220, placeholder="Medicine Name")
         
-        c_name.set("-- Select Medicine --") # Set Placeholder
-        c_name.pack(side="left", padx=5, ipady=3)
+        # 2. Potency
+        c_pot = self.create_searchable_entry(row_frame, self.potency_list, width=80, placeholder="Potency")
         
-        c_pot = ctk.CTkComboBox(row_frame, values=["N/A", "250mg", "500mg", "650mg", "30CH", "200CH"], width=100)
-        c_pot.pack(side="left", padx=5)
+        # 3. Frequency
+        c_freq = self.create_searchable_entry(row_frame, self.freq_list, width=120, placeholder="Frequency")
         
-        c_freq = ctk.CTkComboBox(row_frame, values=["1-0-1", "1-1-1", "1-0-0", "0-0-1", "SOS", "Every 4 hrs"], width=150)
-        c_freq.pack(side="left", padx=5)
+        # 4. Duration
+        c_dur = self.create_searchable_entry(row_frame, self.dur_list, width=100, placeholder="Duration")
         
-        c_dur = ctk.CTkComboBox(row_frame, values=["3 Days", "5 Days", "7 Days", "15 Days", "1 Month"], width=100)
-        c_dur.pack(side="left", padx=5)
-        
-        self.medicine_rows.append({"name": c_name, "potency": c_pot, "freq": c_freq, "duration": c_dur})
+        # Add to list for saving
+        self.medicine_rows.append({
+            "name": c_name, 
+            "potency": c_pot, 
+            "freq": c_freq, 
+            "duration": c_dur
+        })
 
     def add_investigation_row(self):
         row_frame = ctk.CTkFrame(self.inv_rows_frame, fg_color="transparent")
         row_frame.pack(fill="x", pady=2)
         
-        c_test = ctk.CTkComboBox(row_frame, values=["Blood Test (CBC)", "X-Ray", "Sugar Test", "Typhoid", "Lipid Profile"], width=250)
-        c_test.set("")
-        c_test.pack(side="left", padx=0)
+        # 1. Test Name (Searchable)
+        c_test = self.create_searchable_entry(row_frame, self.test_list, width=220, placeholder="Select Test")
         
-        e_note = ctk.CTkEntry(row_frame, placeholder_text="Notes/Results", width=300)
-        e_note.pack(side="left", padx=10)
+        # 2. Notes Entry (Standard)
+        e_note = ctk.CTkEntry(row_frame, placeholder_text="Result/Notes", width=200)
+        e_note.pack(side="left", padx=5)
+
+        # 3. File Label Box
+        file_box = ctk.CTkFrame(row_frame, fg_color="white", width=120, height=28, border_width=1, border_color="#aaa")
+        file_box.pack(side="left", padx=5)
+        file_box.pack_propagate(False) 
         
-        self.investigation_rows.append({"test": c_test, "note": e_note})
+        lbl_filename = ctk.CTkLabel(file_box, text="No file selected", font=("Arial", 10), text_color="gray")
+        lbl_filename.place(relx=0.5, rely=0.5, anchor="center")
+
+        # 4. View Button
+        btn_view = ctk.CTkButton(row_frame, text="👁", width=35, height=28, fg_color="#ced4da", state="disabled")
+        btn_view.pack(side="left", padx=(5, 2))
+
+        # 5. Data & Upload Button
+        row_data = {
+            "test": c_test, 
+            "note": e_note, 
+            "file_path": None,
+            "btn_view": btn_view 
+        }
+
+        btn_upload = ctk.CTkButton(row_frame, text="📂", width=35, height=28, fg_color="#6c757d", 
+                                   command=lambda: self.select_file(lbl_filename, row_data))
+        btn_upload.pack(side="left", padx=0)
+
+        self.investigation_rows.append(row_data)
 
     def save_data(self):
         if not self.reg_number:
@@ -338,8 +412,10 @@ class TreatmentPage(ctk.CTkFrame):
         inv_data = []
         for row in self.investigation_rows:
             test = row['test'].get()
+            path = row.get("file_path")
             if test.strip():
-                inv_data.append({'test': test, 'notes': row['note'].get()})
+                note_to_save = path if path else ""
+                inv_data.append({'test': test, 'notes': note_to_save})
                 
         success, msg = database.save_treatment(self.reg_number, date, complaints, disease, med_data, inv_data)
         
@@ -348,7 +424,162 @@ class TreatmentPage(ctk.CTkFrame):
             self.load_patient_card(self.reg_number)
         else:
             messagebox.showerror("Error", msg)
+        
+    def setup_autocomplete(self, entry_widget, data_list, arrow_button=None):
+        # 1. Get the Main Window (Root)
+        # We attach the listbox to the main window so it floats ABOVE everything else
+        root = entry_widget.winfo_toplevel()
+        
+        # 2. Create a Frame to hold Listbox + Scrollbar
+        pop_frame = tk.Frame(root, bg="white", bd=1, relief="solid")
+        
+        # 3. Create Listbox & Scrollbar
+        listbox = tk.Listbox(pop_frame, width=40, height=8, font=("Arial", 11), 
+                             bd=0, highlightthickness=0, selectbackground="#17a2b8", selectforeground="white")
+        listbox.pack(side="left", fill="both", expand=True)
+        
+        scrollbar = tk.Scrollbar(pop_frame, orient="vertical", command=listbox.yview)
+        scrollbar.pack(side="right", fill="y")
+        
+        listbox.config(yscrollcommand=scrollbar.set)
+        
+        # --- Helper to Position and Show ---
+        def show_list(data):
+            # Clear old data
+            listbox.delete(0, 'end')
+            for item in data:
+                listbox.insert('end', item)
             
+            if not data:
+                pop_frame.place_forget()
+                return
+
+            # CALCULATE EXACT SCREEN POSITION
+            # This ensures it appears exactly under the entry, even inside scrollable frames
+            root_x = root.winfo_rootx()
+            root_y = root.winfo_rooty()
+            
+            # Entry position relative to screen
+            entry_x = entry_widget.winfo_rootx()
+            entry_y = entry_widget.winfo_rooty()
+            
+            # Position relative to Root Window
+            final_x = entry_x - root_x
+            final_y = (entry_y - root_y) + entry_widget.winfo_height()
+            
+            pop_frame.place(x=final_x, y=final_y)
+            pop_frame.lift() # Bring to front layer
+
+        def hide_list():
+            pop_frame.place_forget()
+
+        # --- Event: Typing ---
+        def check_key(event):
+            typed = entry_widget.get()
+            if typed == '':
+                hide_list()
+            else:
+                # Case-insensitive search
+                filtered = [i for i in data_list if typed.lower() in i.lower()]
+                show_list(filtered)
+
+        # --- Event: Selecting ---
+        def on_select(event):
+            if listbox.curselection():
+                index = listbox.curselection()[0]
+                selected_item = listbox.get(index)
+                
+                # Fill Entry
+                entry_widget.delete(0, 'end')
+                entry_widget.insert(0, selected_item)
+                hide_list()
+
+        # --- Event: Arrow Button ---
+        def toggle_dropdown():
+            if pop_frame.winfo_viewable():
+                hide_list()
+            else:
+                # If entry has text, filter. If empty, show ALL.
+                typed = entry_widget.get()
+                if typed:
+                    filtered = [i for i in data_list if typed.lower() in i.lower()]
+                    show_list(filtered)
+                else:
+                    show_list(data_list)
+                
+                entry_widget.focus_set()
+
+        # Bindings
+        entry_widget.bind('<KeyRelease>', check_key)
+        listbox.bind('<<ListboxSelect>>', on_select)
+        
+        # Connect Arrow Button
+        if arrow_button:
+            arrow_button.configure(command=toggle_dropdown)
+            
+        # Optional: Close when clicking away (Advanced logic omitted for stability)
+    
+    def select_file(self, label_widget, row_data):
+        filetypes = (
+            ('Images', '*.png;*.jpg;*.jpeg'),
+            ('PDF', '*.pdf'),
+            ('All files', '*.*')
+        )
+        filepath = filedialog.askopenfilename(
+            title='Report file',
+            initialdir='/', 
+            filetypes=filetypes
+        )
+
+        if filepath:
+            row_data['file_path'] = filepath
+            filename = os.path.basename(filepath)
+            if len(filename) > 15:
+                filename = filename[:12] + "..."
+            label_widget.configure(text=filename, text_color="#2cc985")
+            btn = row_data['btn_view']
+            btn.configure(state="normal", fg_color="#17a2b8")
+            btn.configure(command=lambda: self.open_file(filepath))
+            print(f"Selected File: {filepath}")
+
+        else:
+            print("File selection cancelled.")
+    
+    def create_searchable_entry(self, parent_frame, data_list, width=150, placeholder=""):
+        """
+        Creates a Frame containing: [ Entry | ▼ Button ]
+        And links it to the autocomplete logic.
+        Returns the Entry widget.
+        """
+        # 1. Container Frame (keeps Entry and Button together)
+        container = ctk.CTkFrame(parent_frame, fg_color="transparent")
+        container.pack(side="left", padx=5)
+
+        # 2. Entry
+        entry = ctk.CTkEntry(container, width=width, placeholder_text=placeholder)
+        entry.pack(side="left", padx=0)
+        
+        # 3. Arrow Button
+        btn = ctk.CTkButton(container, text="▼", width=25, height=28, 
+                            fg_color="#e0e0e0", text_color="black", hover_color="#d6d6d6")
+        btn.pack(side="left", padx=0)
+        
+        # 4. Connect Logic
+        self.setup_autocomplete(entry, data_list, arrow_button=btn)
+        
+        return entry
+    
+    def open_file(self, filepath):
+        if not filepath or not os.path.exists(filepath):
+            messagebox.showerror("Error", "File not found")
+            return
+        try:
+            if platform.system() == "Windows":
+                os.startfile(filepath)
+                print(f"Opening file: {filepath}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open the file: {e}")
+       
     def print_visit_card(self, p_data, visit):
         """Generates an HTML file matching the Aarogyam Clinic reference"""
         
